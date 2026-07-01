@@ -36,47 +36,39 @@ parse_dt <- function(x) {
   as.POSIXct(x, format = "%d/%m/%Y %H:%M", tz = "UTC")
 }
 
-#' Renomeia/seleciona as colunas do SIROS para o esquema padrao.
+#' Seleciona as colunas do SIROS relevantes para o cruzamento, convertendo
+#' os horarios (ja em UTC) de texto para POSIXct. Os campos-chave
+#' (sg_empresa_icao, nr_voo, sg_icao_origem, sg_icao_destino, dt_referencia)
+#' usam o mesmo nome no VRA, entao nao precisam ser renomeados.
 padronizar_siros <- function(df) {
-  data.frame(
-    empresa = df$sg_empresa_icao,
-    numero_voo = df$nr_voo,
-    origem = df$sg_icao_origem,
-    destino = df$sg_icao_destino,
-    dt_referencia = df$dt_referencia,
-    partida_prevista_utc = parse_dt(df$dt_partida_prevista_utc),
-    chegada_prevista_utc = parse_dt(df$dt_chegada_prevista_utc),
-    stringsAsFactors = FALSE
-  )
+  df$dt_partida_prevista_utc <- parse_dt(df$dt_partida_prevista_utc)
+  df$dt_chegada_prevista_utc <- parse_dt(df$dt_chegada_prevista_utc)
+  df[, c("sg_empresa_icao", "nr_voo", "sg_icao_origem", "sg_icao_destino", "dt_referencia",
+         "dt_partida_prevista_utc", "dt_chegada_prevista_utc")]
 }
 
-#' Renomeia/seleciona as colunas do VRA para o esquema padrao, convertendo
-#' os horarios (horario de Brasilia) para UTC.
+#' Seleciona as colunas do VRA relevantes para o cruzamento, convertendo os
+#' horarios (horario de Brasilia) para UTC. Os campos-chave usam o mesmo
+#' nome do SIROS.
 padronizar_vra <- function(df) {
   tres_horas <- as.difftime(3, units = "hours")
-  data.frame(
-    empresa = df$sg_empresa_icao,
-    numero_voo = df$nr_voo,
-    origem = df$sg_icao_origem,
-    destino = df$sg_icao_destino,
-    dt_referencia = df$dt_referencia,
-    partida_prevista_utc = parse_dt(df$dt_partida_prevista) + tres_horas,
-    chegada_prevista_utc = parse_dt(df$dt_chegada_prevista) + tres_horas,
-    partida_real_utc = parse_dt(df$dt_partida_real) + tres_horas,
-    chegada_real_utc = parse_dt(df$dt_chegada_real) + tres_horas,
-    situacao_voo = df$ds_situacao_voo,
-    justificativa = df$ds_justificativa,
-    stringsAsFactors = FALSE
-  )
+  df$dt_partida_prevista_utc <- parse_dt(df$dt_partida_prevista) + tres_horas
+  df$dt_chegada_prevista_utc <- parse_dt(df$dt_chegada_prevista) + tres_horas
+  df$dt_partida_real_utc <- parse_dt(df$dt_partida_real) + tres_horas
+  df$dt_chegada_real_utc <- parse_dt(df$dt_chegada_real) + tres_horas
+  df[, c("sg_empresa_icao", "nr_voo", "sg_icao_origem", "sg_icao_destino", "dt_referencia",
+         "dt_partida_prevista_utc", "dt_chegada_prevista_utc",
+         "dt_partida_real_utc", "dt_chegada_real_utc",
+         "ds_situacao_voo", "ds_justificativa")]
 }
 
-#' Cruza os dois conjuntos padronizados por empresa + numero de voo +
-#' origem + destino + data de referencia. Mantem voos que aparecem so em
-#' um dos lados (full outer join).
+#' Cruza os dois conjuntos padronizados por sg_empresa_icao + nr_voo +
+#' sg_icao_origem + sg_icao_destino + dt_referencia. Mantem voos que
+#' aparecem so em um dos lados (full outer join).
 cruzar_siros_vra <- function(siros_padronizado, vra_padronizado) {
   merge(
     siros_padronizado, vra_padronizado,
-    by = c("empresa", "numero_voo", "origem", "destino", "dt_referencia"),
+    by = c("sg_empresa_icao", "nr_voo", "sg_icao_origem", "sg_icao_destino", "dt_referencia"),
     all = TRUE, suffixes = c("_siros", "_vra")
   )
 }

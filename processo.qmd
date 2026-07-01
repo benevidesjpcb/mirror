@@ -145,10 +145,12 @@ Ou via terminal:
 Rscript scripts/cruzar_siros_vra.R --data 10-12-2025
 ```
 
-Saída: `data/anac/cruzamento/cruzamento_10122025.{csv,parquet}`, com as colunas do SIROS
-(`partida_prevista_utc_siros`, `chegada_prevista_utc_siros`) ao lado das colunas do VRA
-(`partida_prevista_utc_vra`, `chegada_prevista_utc_vra`, `partida_real_utc`, `chegada_real_utc`,
-`situacao_voo`, `justificativa`) — todas já em UTC.
+Saída: `data/anac/cruzamento/cruzamento_10122025.{csv,parquet}`, com as colunas-chave
+originais (`sg_empresa_icao`, `nr_voo`, `sg_icao_origem`, `sg_icao_destino`, `dt_referencia`)
+e os horários já em UTC: `dt_partida_prevista_utc_siros`/`_vra`,
+`dt_chegada_prevista_utc_siros`/`_vra` (previsto, comparando as duas fontes), mais
+`dt_partida_real_utc`, `dt_chegada_real_utc`, `ds_situacao_voo`, `ds_justificativa` (só existem
+no VRA).
 
 ### `data/fpl/`
 
