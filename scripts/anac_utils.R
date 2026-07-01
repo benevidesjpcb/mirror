@@ -8,22 +8,13 @@ for (pkg in c("httr", "jsonlite")) {
 }
 library(httr)
 
-#' Converte 'dd-MM-aaaa' (ou 'aaaa-MM-dd') para o formato ddMMaaaa (API SIROS)
+#' Converte 'dd-MM-aaaa' (ou 'aaaa-MM-dd') para o formato ddMMaaaa exigido
+#' pelas APIs SIROS e VRA da ANAC
 fmt_data <- function(data_str) {
   formatos <- c("%d-%m-%Y", "%Y-%m-%d")
   for (f in formatos) {
     d <- as.Date(data_str, format = f)
     if (!is.na(d)) return(format(d, "%d%m%Y"))
-  }
-  stop(sprintf("Data invalida: %s. Use dd-MM-aaaa.", data_str))
-}
-
-#' Converte 'dd-MM-aaaa' (ou 'aaaa-MM-dd') para o formato aaaa-MM-dd (API VRA)
-fmt_data_iso <- function(data_str) {
-  formatos <- c("%d-%m-%Y", "%Y-%m-%d")
-  for (f in formatos) {
-    d <- as.Date(data_str, format = f)
-    if (!is.na(d)) return(format(d, "%Y-%m-%d"))
   }
   stop(sprintf("Data invalida: %s. Use dd-MM-aaaa.", data_str))
 }

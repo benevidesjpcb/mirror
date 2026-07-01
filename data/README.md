@@ -26,9 +26,9 @@ Rscript scripts/ANAC_SIROS_voo.R --data 10-12-2025
 
 ### API VRA (`scripts/ANAC_VRA_voo.R`)
 
-- Por periodo: `https://sas.anac.gov.br/sas/vra_api/vra?dt_referencia1={dt}&dt_referencia2={dt}`
-- Por dia: `https://sas.anac.gov.br/sas/vra_api/vra/data?dt_voo={dt}`
-- Voo especifico: `https://sas.anac.gov.br/sas/vra_api/vra/voo?dt_voo={dt}&sg_empresa_icao={..}&sg_icao_origem={..}&sg_icao_destino={..}&nr_voo={..}`
+- Por periodo: `https://sas.anac.gov.br/sas/vra_api/vra?dt_referencia1={ddmmyyyy}&dt_referencia2={ddmmyyyy}`
+- Por dia: `https://sas.anac.gov.br/sas/vra_api/vra/data?dt_voo={ddmmyyyy}`
+- Voo especifico: `https://sas.anac.gov.br/sas/vra_api/vra/voo?dt_voo={ddmmyyyy}&sg_empresa_icao={..}&sg_icao_origem={..}&sg_icao_destino={..}&nr_voo={..}`
 - Aerodromo: `https://sas.anac.gov.br/sas/vra_api/aerodromo?sg_aerodromo_icao_ou_iata={..}`
 
 ```bash

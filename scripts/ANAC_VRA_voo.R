@@ -7,9 +7,8 @@
 #   - Voo especifico: GET https://sas.anac.gov.br/sas/vra_api/vra/voo?dt_voo={dt}&sg_empresa_icao={..}&sg_icao_origem={..}&sg_icao_destino={..}&nr_voo={..}
 #   - Aerodromo:    GET https://sas.anac.gov.br/sas/vra_api/aerodromo?sg_aerodromo_icao_ou_iata={..}
 #
-# A documentacao nao especifica o formato de data esperado pelos parametros
-# dt_referencia1/dt_referencia2/dt_voo; este script assume ISO (aaaa-MM-dd).
-# Se a API responder vazio/erro, avise para ajustarmos o formato.
+# Os parametros dt_referencia1/dt_referencia2/dt_voo usam o formato ddmmyyyy
+# (mesmo formato do SIROS), conforme a documentacao oficial da API VRA.
 #
 # Uso via linha de comando:
 #   Rscript scripts/ANAC_VRA_voo.R --data 10-12-2025
@@ -39,22 +38,22 @@ BASE <- "https://sas.anac.gov.br/sas/vra_api"
 DATA_DIR <- file.path(PROJECT_ROOT, "data", "anac")
 
 baixar_vra_dia <- function(data_str) {
-  dt <- fmt_data_iso(data_str)
+  dt <- fmt_data(data_str)
   url <- sprintf("%s/vra/data?dt_voo=%s", BASE, dt)
-  base_sem_ext <- file.path(DATA_DIR, "voos", sprintf("voos_vra_%s", fmt_data(data_str)))
+  base_sem_ext <- file.path(DATA_DIR, "voos", sprintf("voos_vra_%s", dt))
   baixar_e_tabular(url, base_sem_ext)
 }
 
 baixar_vra_periodo <- function(inicio_str, fim_str) {
-  ini_iso <- fmt_data_iso(inicio_str)
-  fim_iso <- fmt_data_iso(fim_str)
-  url <- sprintf("%s/vra?dt_referencia1=%s&dt_referencia2=%s", BASE, ini_iso, fim_iso)
-  base_sem_ext <- file.path(DATA_DIR, "voos", sprintf("voos_vra_periodo_%s_a_%s", fmt_data(inicio_str), fmt_data(fim_str)))
+  ini <- fmt_data(inicio_str)
+  fim <- fmt_data(fim_str)
+  url <- sprintf("%s/vra?dt_referencia1=%s&dt_referencia2=%s", BASE, ini, fim)
+  base_sem_ext <- file.path(DATA_DIR, "voos", sprintf("voos_vra_periodo_%s_a_%s", ini, fim))
   baixar_e_tabular(url, base_sem_ext)
 }
 
 consultar_vra_voo <- function(data_str, empresa = NULL, origem = NULL, destino = NULL, numero = NULL) {
-  params <- c(dt_voo = fmt_data_iso(data_str))
+  params <- c(dt_voo = fmt_data(data_str))
   if (!is.null(empresa)) params["sg_empresa_icao"] <- empresa
   if (!is.null(origem)) params["sg_icao_origem"] <- origem
   if (!is.null(destino)) params["sg_icao_destino"] <- destino
