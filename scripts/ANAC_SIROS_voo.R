@@ -66,6 +66,12 @@ baixar <- function(url, destino) {
 converter_para_tabela <- function(caminho_json) {
   dados <- jsonlite::fromJSON(caminho_json, flatten = TRUE)
 
+  # A API retorna o corpo como uma string contendo JSON (JSON "dobrado").
+  # Reparseia enquanto o resultado ainda for uma unica string.
+  while (is.character(dados) && length(dados) == 1) {
+    dados <- jsonlite::fromJSON(dados, flatten = TRUE)
+  }
+
   if (is.data.frame(dados)) {
     return(dados)
   }
