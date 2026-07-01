@@ -1,0 +1,150 @@
+---
+title: "Processo de coleta de dados ANAC + FPL"
+author: "Jean Balão"
+date: last-modified
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+lang: pt
+---
+
+## Objetivo
+
+Este documento descreve o processo de coleta de dados de voos da ANAC (APIs SIROS e VRA) e
+como eles se organizam no repositório para cruzamento posterior com dados de plano de voo (FPL).
+
+## Estrutura de pastas
+
+```
+mirror/
+├── data/
+│   ├── README.md
+│   ├── anac/
+│   │   ├── voos/         -> saidas dos downloads de voos (SIROS e VRA)
+│   │   ├── registros/    -> CSV de registros vigentes (SIROS)
+│   │   └── aerodromos/   -> consultas de aerodromo (VRA)
+│   └── fpl/              -> dados de plano de voo do usuario
+├── scripts/
+│   ├── ANAC_SIROS_voo.R  -> baixa dados da API SIROS
+│   ├── ANAC_VRA_voo.R    -> baixa dados da API VRA
+│   └── anac_utils.R      -> funcoes internas compartilhadas
+└── processo.qmd          -> este documento
+```
+
+## O que tem em cada arquivo
+
+### `scripts/anac_utils.R`
+
+Não é chamado diretamente — é carregado (`source()`) pelos outros dois scripts. Contém as
+funções compartilhadas:
+
+- `fmt_data()` — converte uma data digitada como `dd-MM-aaaa` (ou `aaaa-MM-dd`) para o formato
+  `ddMMaaaa` que as APIs SIROS e VRA exigem.
+- `baixar()` — faz o `GET` na URL e salva a resposta bruta em disco.
+- `converter_para_tabela()` — interpreta o JSON retornado e monta uma tabela (`data.frame`).
+  Lida com o caso da API devolver "JSON dobrado" (uma string que contém JSON dentro).
+- `salvar_tabela()` — salva a tabela como `.csv` (sempre) e como `.parquet` (se o pacote
+  `arrow` estiver instalado).
+- `baixar_e_tabular()` — combina as três funções acima: baixa, converte e salva.
+
+### `scripts/ANAC_SIROS_voo.R`
+
+Baixa dados da API **SIROS** da ANAC. Endpoints usados:
+
+| Endpoint | URL |
+|---|---|
+| Voos (um dia) | `https://sas.anac.gov.br/sas/siros_api/voos?dataReferencia=ddMMaaaa` |
+| Voos (período) | `https://sas.anac.gov.br/sas/siros_api/api/voosPeriodo?dataReferenciaInicio=ddMMaaaa&dataReferenciaFinal=ddMMaaaa` |
+| Registros vigentes | `https://siros.anac.gov.br/siros/registros/registros/registros.csv` |
+
+Funções para uso interativo no R:
+
+```{r}
+#| eval: false
+source("scripts/ANAC_SIROS_voo.R")
+
+baixar_voos_dia("10-12-2025")
+baixar_voos_periodo("01-12-2025", "10-12-2025")
+baixar_registros()
+```
+
+Ou via terminal:
+
+```bash
+Rscript scripts/ANAC_SIROS_voo.R --data 10-12-2025
+Rscript scripts/ANAC_SIROS_voo.R --inicio 01-12-2025 --fim 10-12-2025
+Rscript scripts/ANAC_SIROS_voo.R --registros
+```
+
+Saída: `data/anac/voos/voos_siros_10122025.{json,csv,parquet}`
+
+Campos confirmados num download real: `dt_referencia`, `sg_empresa_icao`, `nr_etapa`,
+`nr_voo`, `sg_equipamento_icao` (e mais colunas que não chegamos a listar por completo —
+depois do primeiro download, confira o `.csv` gerado para ver todas as colunas).
+
+### `scripts/ANAC_VRA_voo.R`
+
+Baixa dados da API **VRA** (Voos Regulares Ativos) da ANAC — inclui dados de horário real e
+situação do voo, além do previsto. Endpoints usados:
+
+| Endpoint | URL |
+|---|---|
+| Por período | `https://sas.anac.gov.br/sas/vra_api/vra?dt_referencia1=ddmmyyyy&dt_referencia2=ddmmyyyy` |
+| Por dia | `https://sas.anac.gov.br/sas/vra_api/vra/data?dt_voo=ddmmyyyy` |
+| Voo específico | `https://sas.anac.gov.br/sas/vra_api/vra/voo?dt_voo=ddmmyyyy&sg_empresa_icao=..&sg_icao_origem=..&sg_icao_destino=..&nr_voo=..` |
+| Aeródromo | `https://sas.anac.gov.br/sas/vra_api/aerodromo?sg_aerodromo_icao_ou_iata=..` |
+
+Funções para uso interativo no R:
+
+```{r}
+#| eval: false
+source("scripts/ANAC_VRA_voo.R")
+
+baixar_vra_dia("10-12-2025")
+baixar_vra_periodo("01-12-2025", "10-12-2025")
+consultar_vra_voo("10-12-2025", empresa = "TAP", numero = "0009")
+consultar_aerodromo("GRU")
+```
+
+Ou via terminal:
+
+```bash
+Rscript scripts/ANAC_VRA_voo.R --data 10-12-2025
+Rscript scripts/ANAC_VRA_voo.R --periodo 01-12-2025 10-12-2025
+Rscript scripts/ANAC_VRA_voo.R --voo --dia 10-12-2025 --empresa TAP --numero 0009
+Rscript scripts/ANAC_VRA_voo.R --aerodromo GRU
+```
+
+Saída: `data/anac/voos/voos_vra_10122025.{json,csv,parquet}`
+
+Campos principais do VRA: `sg_empresa_icao`, `nm_empresa`, `nr_voo`, `cd_di`, `cd_tipo_linha`,
+`sg_equipamento_icao`, `nr_assentos_ofertados`, `sg_icao_origem`, `nm_aerodromo_origem`,
+`dt_partida_prevista`, `dt_partida_real`, `sg_icao_destino`, `nm_aerodromo_destino`,
+`dt_chegada_prevista`, `dt_chegada_real`, `ds_situacao_voo`, `ds_justificativa`,
+`dt_referencia`, `ds_situacao_partida`, `ds_situacao_chegada`.
+
+### `data/fpl/`
+
+Pasta onde ficam os dados de plano de voo (FPL) do usuário, ainda a definir formato, para
+cruzamento com os dados de voos da ANAC (SIROS/VRA) — por exemplo, comparar o plano de voo
+arquivado com o horário real de partida/chegada e a situação do voo.
+
+## Observações importantes
+
+- As datas usadas nos parâmetros das duas APIs (SIROS e VRA) seguem o formato `ddMMaaaa`
+  (ex.: `10122025` para 10/12/2025). Os scripts fazem essa conversão automaticamente a
+  partir de `dd-MM-aaaa`.
+- Cada download gera 3 arquivos com o mesmo nome base: `.json` (resposta bruta da API),
+  `.csv` (sempre gerado) e `.parquet` (só se o pacote `arrow` estiver instalado —
+  `install.packages("arrow")`).
+- O prefixo do nome do arquivo (`voos_siros_*` ou `voos_vra_*`) identifica de qual API o
+  dado veio, já que os dois cobrem informações parcialmente diferentes sobre os mesmos voos.
+
+## Próximos passos
+
+1. Baixar os dados do dia 10/12/2025 nas duas APIs.
+2. Definir o formato final dos dados de FPL em `data/fpl/`.
+3. Construir o cruzamento entre SIROS, VRA e FPL (provavelmente por empresa + número de voo +
+   data + origem/destino).
