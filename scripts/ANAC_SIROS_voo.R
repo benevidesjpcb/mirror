@@ -14,9 +14,15 @@
 #
 # Uso interativo (RStudio): defina as variaveis abaixo e chame as funcoes
 # baixar_voos_dia(), baixar_voos_periodo() ou baixar_registros() direto.
+#
+# Cada download de voos (--data / --inicio+--fim) salva 3 arquivos com o
+# mesmo nome base: o .json bruto, um .csv (sempre) e um .parquet (se o
+# pacote 'arrow' estiver instalado: install.packages("arrow")).
 
-if (!requireNamespace("httr", quietly = TRUE)) {
-  install.packages("httr", repos = "https://cloud.r-project.org")
+for (pkg in c("httr", "jsonlite")) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg, repos = "https://cloud.r-project.org")
+  }
 }
 library(httr)
 
@@ -55,19 +61,66 @@ baixar <- function(url, destino) {
   cat(sprintf("Salvo em: %s (%d bytes)\n", destino, file.info(destino)$size))
 }
 
+#' Converte o JSON baixado em uma tabela (data.frame), tentando lidar com
+#' respostas ja tabulares ou com um nivel extra de aninhamento.
+converter_para_tabela <- function(caminho_json) {
+  dados <- jsonlite::fromJSON(caminho_json, flatten = TRUE)
+
+  if (is.data.frame(dados)) {
+    return(dados)
+  }
+
+  if (is.list(dados)) {
+    candidatos <- Filter(function(x) is.data.frame(x) || (is.list(x) && length(x) > 0), dados)
+    if (length(candidatos) > 0) {
+      primeiro <- candidatos[[1]]
+      if (is.data.frame(primeiro)) return(primeiro)
+      return(jsonlite::fromJSON(jsonlite::toJSON(primeiro), flatten = TRUE))
+    }
+  }
+
+  stop("Nao foi possivel identificar uma tabela dentro do JSON retornado.")
+}
+
+#' Salva a tabela em CSV (sempre) e em Parquet (se o pacote 'arrow' estiver
+#' instalado). Instale com install.packages("arrow") para habilitar Parquet.
+salvar_tabela <- function(tabela, caminho_sem_extensao) {
+  caminho_csv <- paste0(caminho_sem_extensao, ".csv")
+  utils::write.csv(tabela, caminho_csv, row.names = FALSE, fileEncoding = "UTF-8")
+  cat(sprintf("Tabela CSV salva em: %s (%d linhas)\n", caminho_csv, nrow(tabela)))
+
+  if (requireNamespace("arrow", quietly = TRUE)) {
+    caminho_parquet <- paste0(caminho_sem_extensao, ".parquet")
+    arrow::write_parquet(tabela, caminho_parquet)
+    cat(sprintf("Tabela Parquet salva em: %s\n", caminho_parquet))
+  } else {
+    cat("Pacote 'arrow' nao encontrado — Parquet nao gerado. Instale com install.packages(\"arrow\") para habilitar.\n")
+  }
+}
+
 baixar_voos_dia <- function(data_str) {
   ref <- fmt_data(data_str)
   url <- sprintf("%s/voos?dataReferencia=%s", BASE, ref)
-  destino <- file.path(DATA_DIR, "voos", sprintf("voos_%s.json", ref))
-  baixar(url, destino)
+  destino_json <- file.path(DATA_DIR, "voos", sprintf("voos_%s.json", ref))
+  baixar(url, destino_json)
+
+  tabela <- converter_para_tabela(destino_json)
+  base_sem_ext <- file.path(DATA_DIR, "voos", sprintf("voos_%s", ref))
+  salvar_tabela(tabela, base_sem_ext)
+  invisible(tabela)
 }
 
 baixar_voos_periodo <- function(inicio_str, fim_str) {
   ini <- fmt_data(inicio_str)
   fim <- fmt_data(fim_str)
   url <- sprintf("%s/api/voosPeriodo?dataReferenciaInicio=%s&dataReferenciaFinal=%s", BASE, ini, fim)
-  destino <- file.path(DATA_DIR, "voos", sprintf("voos_periodo_%s_a_%s.json", ini, fim))
-  baixar(url, destino)
+  destino_json <- file.path(DATA_DIR, "voos", sprintf("voos_periodo_%s_a_%s.json", ini, fim))
+  baixar(url, destino_json)
+
+  tabela <- converter_para_tabela(destino_json)
+  base_sem_ext <- file.path(DATA_DIR, "voos", sprintf("voos_periodo_%s_a_%s", ini, fim))
+  salvar_tabela(tabela, base_sem_ext)
+  invisible(tabela)
 }
 
 baixar_registros <- function() {
