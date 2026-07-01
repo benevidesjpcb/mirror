@@ -41,6 +41,7 @@ parse_dt <- function(x) {
 #' (sg_empresa_icao, nr_voo, sg_icao_origem, sg_icao_destino, dt_referencia)
 #' usam o mesmo nome no VRA, entao nao precisam ser renomeados.
 padronizar_siros <- function(df) {
+  df$dt_referencia <- as.Date(df$dt_referencia, format = "%d/%m/%Y")
   df$dt_partida_prevista_utc <- parse_dt(df$dt_partida_prevista_utc)
   df$dt_chegada_prevista_utc <- parse_dt(df$dt_chegada_prevista_utc)
   df[, c("sg_empresa_icao", "nr_voo", "sg_icao_origem", "sg_icao_destino", "dt_referencia",
@@ -52,6 +53,7 @@ padronizar_siros <- function(df) {
 #' nome do SIROS.
 padronizar_vra <- function(df) {
   tres_horas <- as.difftime(3, units = "hours")
+  df$dt_referencia <- as.Date(df$dt_referencia, format = "%d/%m/%Y")
   df$dt_partida_prevista_utc <- parse_dt(df$dt_partida_prevista) + tres_horas
   df$dt_chegada_prevista_utc <- parse_dt(df$dt_chegada_prevista) + tres_horas
   df$dt_partida_real_utc <- parse_dt(df$dt_partida_real) + tres_horas
