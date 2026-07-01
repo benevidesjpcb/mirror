@@ -39,9 +39,6 @@ Este ambiente de execucao bloqueia acesso direto a `sas.anac.gov.br` (politica d
 arquivos localmente (fora do sandbox) com os scripts acima e coloque-os aqui, ou ajuste a politica
 de rede do ambiente.
 
-Ha tambem um script Python equivalente para a API SIROS (`scripts/download_anac_voos.py`), para
-quem preferir Python em vez de R.
-
 ## `fpl/`
 
 Dados de plano de voo (FPL) do usuario, para cruzamento com os dados de voos da ANAC.
