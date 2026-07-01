@@ -24,12 +24,14 @@ mirror/
 │   ├── anac/
 │   │   ├── voos/         -> saidas dos downloads de voos (SIROS e VRA)
 │   │   ├── registros/    -> CSV de registros vigentes (SIROS)
-│   │   └── aerodromos/   -> consultas de aerodromo (VRA)
+│   │   ├── aerodromos/   -> consultas de aerodromo (VRA)
+│   │   └── cruzamento/   -> resultado do cruzamento SIROS x VRA
 │   └── fpl/              -> dados de plano de voo do usuario
 ├── scripts/
-│   ├── ANAC_SIROS_voo.R  -> baixa dados da API SIROS
-│   ├── ANAC_VRA_voo.R    -> baixa dados da API VRA
-│   └── anac_utils.R      -> funcoes internas compartilhadas
+│   ├── ANAC_SIROS_voo.R    -> baixa dados da API SIROS
+│   ├── ANAC_VRA_voo.R      -> baixa dados da API VRA
+│   ├── anac_utils.R        -> funcoes internas compartilhadas
+│   └── cruzar_siros_vra.R  -> padroniza e cruza SIROS x VRA
 └── processo.qmd          -> este documento
 ```
 
@@ -81,8 +83,9 @@ Rscript scripts/ANAC_SIROS_voo.R --registros
 Saída: `data/anac/voos/voos_siros_10122025.{json,csv,parquet}`
 
 Campos confirmados num download real: `dt_referencia`, `sg_empresa_icao`, `nr_etapa`,
-`nr_voo`, `sg_equipamento_icao` (e mais colunas que não chegamos a listar por completo —
-depois do primeiro download, confira o `.csv` gerado para ver todas as colunas).
+`nr_voo`, `sg_equipamento_icao`, `qt_assentos_previstos`, `sg_icao_origem`,
+`dt_partida_prevista_utc`, `sg_icao_destino`, `dt_chegada_prevista_utc`, `ds_tipo_servico`,
+`tx_codeshare`.
 
 ### `scripts/ANAC_VRA_voo.R`
 
@@ -125,11 +128,48 @@ Campos principais do VRA: `sg_empresa_icao`, `nm_empresa`, `nr_voo`, `cd_di`, `c
 `dt_chegada_prevista`, `dt_chegada_real`, `ds_situacao_voo`, `ds_justificativa`,
 `dt_referencia`, `ds_situacao_partida`, `ds_situacao_chegada`.
 
+### `scripts/cruzar_siros_vra.R`
+
+Lê os CSVs já baixados de SIROS e VRA para uma mesma data, padroniza as colunas (mesmo nome,
+mesmo fuso horário) e cruza por `empresa + numero_voo + origem + destino + dt_referencia`.
+
+```{r}
+#| eval: false
+source("scripts/cruzar_siros_vra.R")
+cruzamento <- cruzar_data("10-12-2025")
+```
+
+Ou via terminal:
+
+```bash
+Rscript scripts/cruzar_siros_vra.R --data 10-12-2025
+```
+
+Saída: `data/anac/cruzamento/cruzamento_10122025.{csv,parquet}`, com as colunas do SIROS
+(`partida_prevista_utc_siros`, `chegada_prevista_utc_siros`) ao lado das colunas do VRA
+(`partida_prevista_utc_vra`, `chegada_prevista_utc_vra`, `partida_real_utc`, `chegada_real_utc`,
+`situacao_voo`, `justificativa`) — todas já em UTC.
+
 ### `data/fpl/`
 
 Pasta onde ficam os dados de plano de voo (FPL) do usuário, ainda a definir formato, para
 cruzamento com os dados de voos da ANAC (SIROS/VRA) — por exemplo, comparar o plano de voo
 arquivado com o horário real de partida/chegada e a situação do voo.
+
+## Fuso horário — SIROS x VRA
+
+Verificado com o voo TAP 0009 (LPPT → SBSG) de 10/12/2025:
+
+| Fonte | Partida prevista | Chegada prevista |
+|---|---|---|
+| SIROS (`_utc`) | 10/12 17:15 | 11/12 00:55 |
+| VRA (sem sufixo) | 10/12 14:15 | 10/12 21:55 |
+
+Diferença de exatas 3 horas nos dois pontos. Lisboa (LPPT) está em UTC+0 em dezembro — se o VRA
+usasse hora local do aeroporto de origem, a partida apareceria como 17:15 (igual ao UTC). Como
+apareceu 14:15, o VRA está reportando em **horário de Brasília (UTC-3) fixo**, não hora local do
+aeroporto. Por isso `cruzar_siros_vra.R` soma 3h aos horários do VRA para converter para UTC
+antes de cruzar com o SIROS.
 
 ## Observações importantes
 
@@ -144,7 +184,8 @@ arquivado com o horário real de partida/chegada e a situação do voo.
 
 ## Próximos passos
 
-1. Baixar os dados do dia 10/12/2025 nas duas APIs.
-2. Definir o formato final dos dados de FPL em `data/fpl/`.
-3. Construir o cruzamento entre SIROS, VRA e FPL (provavelmente por empresa + número de voo +
-   data + origem/destino).
+1. ~~Baixar os dados do dia 10/12/2025 nas duas APIs.~~ ✅
+2. ~~Cruzar SIROS x VRA, com colunas padronizadas e horários em UTC.~~ ✅
+3. Definir o formato final dos dados de FPL em `data/fpl/`.
+4. Incluir o FPL no cruzamento (provavelmente por empresa + número de voo + data +
+   origem/destino).

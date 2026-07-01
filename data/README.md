@@ -12,6 +12,17 @@ Dados baixados das APIs da ANAC. Cada download gera 3 arquivos com o mesmo nome 
   - `voos_vra_*` — API VRA (`scripts/ANAC_VRA_voo.R`)
 - `anac/registros/` — CSV de registros vigentes de empresas/voos (SIROS).
 - `anac/aerodromos/` — consultas de aerodromo (VRA).
+- `anac/cruzamento/` — `cruzamento_*` gerado por `scripts/cruzar_siros_vra.R`, cruzando
+  SIROS e VRA (colunas padronizadas, horarios convertidos para UTC).
+
+### Fuso horario
+
+- **SIROS**: os proprios nomes das colunas dizem (`dt_partida_prevista_utc`,
+  `dt_chegada_prevista_utc`) — ja vem em **UTC**.
+- **VRA**: confirmado empiricamente (voo TAP 0009 LPPT→SBSG de 10/12/2025) que os horarios
+  (`dt_partida_prevista`, `dt_partida_real`, `dt_chegada_prevista`, `dt_chegada_real`) vem em
+  **horario de Brasilia (UTC-3), fixo**, independente do fuso real do aeroporto de
+  origem/destino. `scripts/cruzar_siros_vra.R` soma 3h a esses campos para converter para UTC.
 
 ### API SIROS (`scripts/ANAC_SIROS_voo.R`)
 
@@ -38,6 +49,15 @@ Rscript scripts/ANAC_VRA_voo.R --data 10-12-2025
 Este ambiente de execucao bloqueia acesso direto a `sas.anac.gov.br` (politica de rede). Baixe os
 arquivos localmente (fora do sandbox) com os scripts acima e coloque-os aqui, ou ajuste a politica
 de rede do ambiente.
+
+### Cruzamento (`scripts/cruzar_siros_vra.R`)
+
+Depois de baixar SIROS e VRA para a mesma data, cruza os dois por empresa + numero de voo +
+origem + destino + data de referencia:
+
+```bash
+Rscript scripts/cruzar_siros_vra.R --data 10-12-2025
+```
 
 ## `fpl/`
 
