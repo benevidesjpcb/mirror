@@ -1,0 +1,152 @@
+---
+title: "Processo de tratamento dos dados de ADS-B"
+author: "Jean Balão"
+date: last-modified
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+lang: pt
+---
+
+## Objetivo
+
+Documentar a investigação e o tratamento dos dados brutos de ADS-B (`data-src/adsb_*.csv`),
+até chegar num arquivo final com a matrícula da aeronave associada a cada ponto de posição.
+Esse arquivo é grande demais pra versionar no git — os dados brutos e o resultado ficam em
+`data-src/`, local e no `.gitignore`. O que fica no repositório é a lógica: `scripts/padronizar_adsb.R`.
+
+## Estrutura do arquivo bruto
+
+Uma linha por **ponto de posição** captado por radar/ADS-B (não uma linha por voo). Um único
+dia (`adsb_2026_03_15.csv`) tem ~3,8 milhões de linhas.
+
+| Coluna | Significado |
+|---|---|
+| `sic` | ID do site/radar que captou o ponto |
+| `trackn` | Número da pista/track (id interno do rastreador) |
+| `lat`, `lon` | Latitude/longitude da aeronave |
+| `taddr` | Endereço Mode-S (ICAO24) da aeronave, gravado como número decimal |
+| `geometric_height` | Altitude geométrica (GPS), em pés |
+| `mode3a` | Código do transponder (squawk, octal) |
+| `fl` | Flight level (altitude barométrica) |
+| `gs` | Velocidade no solo |
+| `ta` | Track angle / proa |
+| `tid` | Indicativo/callsign (ex: `"TAM3414 "`, com espaços de preenchimento — precisa `trimws()`) |
+| `ecat` | Categoria da aeronave (emitter category, padrão ADS-B) |
+| `dt_point` | Timestamp completo (data + hora) em UTC |
+| `daily_epoch` | Segundos desde a meia-noite (quantizado no ciclo de varredura do radar) |
+| `nucr_or_nacv`, `nucp_or_nic`, `nicbaro`, `sil`, `nacp`, `sils`, `sda`, `gva`, `pic` | Indicadores padrão de qualidade/incerteza do ADS-B |
+
+## Bug 1: marcador decimal errado
+
+Lendo com `read_csv2()` (que assume `;` como separador e `,` como decimal), colunas com casas
+decimais saíam corrompidas:
+
+| Coluna | Valor bruto no arquivo | Valor lido (errado) |
+|---|---|---|
+| `lon` | `-44.636356830596924` | `-4.463636e+16` |
+| `ta` | `35.4913330078125` | `3.549133e+14` |
+
+O `read_csv2()` não reconhece `.` como decimal (espera `,`), então os dígitos ficam
+concatenados sem o ponto — `35.4913330078125` → `354913330078125` → `3.549133e+14`. O
+delimitador (`;`) estava certo; só o decimal estava errado. Esse arquivo é uma mistura pouco
+comum: `;` como separador, `.` como decimal.
+
+**Correção:**
+```r
+adsb <- read_delim("./data-src/adsb_2026_03_15.csv", delim = ";", locale = locale(decimal_mark = "."))
+```
+
+## Investigação do timestamp: `daily_epoch` x `dt_point`
+
+Hipótese inicial: `dt_point` seria só a data (hora sempre zerada) e `daily_epoch` traria os
+segundos do dia — juntando os dois teríamos o horário real, igual ao padrão visto no FPL
+(`eobd`+`eobt`).
+
+**Isso estava errado.** `range(adsb$dt_point)` mostrou que ele já varia o dia inteiro
+(`00:00:00` a `23:59:59`) — ou seja, `dt_point` **já é** o timestamp completo. A confusão veio
+de olhar só as 3 primeiras linhas do arquivo (que, por estarem perto da meia-noite, mostravam
+hora zerada por coincidência).
+
+Ao somar `daily_epoch` em cima de um `dt_point` que já tinha a hora certa, a hora foi contada
+**duas vezes**, e o resultado "vazou" pro dia seguinte em pontos no fim do dia (por isso o
+`range()` do timestamp combinado ia até `2026-03-16 23:59:59`, quando devia ficar só em
+`2026-03-15`).
+
+Confirmação: comparando o segundo-do-dia embutido em `dt_point` com `daily_epoch`, a diferença
+fica quase toda entre -1 e +5 segundos (98%+ dos casos) — são a mesma informação, só que
+`daily_epoch` é mais grosseiro (quantizado no ciclo de varredura do radar, ~4s).
+
+**Conclusão: usar `dt_point` direto, sem somar `daily_epoch`.**
+
+## Tentativa de fórmula para ICAO24 (abandonada)
+
+Antes de usar uma base de dados pronta, tentamos calcular o ICAO24 a partir da matrícula
+brasileira, usando o algoritmo genérico (letras → base-26 + offset por prefixo de categoria).
+
+Testado com 2 aeronaves reais (Boeing 737 da Gol, matrícula + Mode S conferidos no
+planespotters.net):
+
+| Matrícula | ICAO24 real |
+|---|---|
+| PR-GUV | `E48B01` |
+| PR-GXV | `E48FB6` |
+
+Calculando `N` (base-26 das 3 últimas letras) e o offset implícito pelo primeiro exemplo, o
+segundo não bateu: a diferença real entre os dois ICAO24 (`1.205`) não corresponde à diferença
+prevista pela fórmula (`78`). A estrutura assumida está errada, e **não existe documentação
+pública** da fórmula real usada pela ANAC/DECEA (confirmado por busca — só os EUA têm esse
+algoritmo bem documentado publicamente). Abandonamos essa linha.
+
+## Solução: base de aeronaves da OpenSky Network
+
+A [OpenSky Network](https://opensky-network.org/data/aircraft) mantém uma base pública e
+gratuita de aeronaves do mundo todo, com `icao24` já emparelhado a `registration`
+(matrícula), fabricante, modelo e operador — sem precisar de fórmula nenhuma.
+
+Validado com o mesmo PR-GUV: a base retornou `icao24 = e48b01`, batendo exatamente com o valor
+conferido manualmente no planespotters.net.
+
+Duas armadilhas nessa base:
+- Os snapshots `aircraft-database-complete-*.csv` usam **aspas simples** (`'`) para demarcar
+  texto, não aspas duplas. Sem avisar isso ao `read_csv()`, tanto os nomes das colunas quanto
+  os valores saem com a aspa grudada (ex: coluna `` `'icao24'` `` em vez de `icao24`). Corrige
+  com `read_csv(..., quote = "'")`.
+- Os nomes de coluna usam `camelCase` (`manufacturerName`, não `manufacturername`) — diferente
+  da amostra pequena da OpenSky, que vem toda em minúsculo. `dplyr::select()` é sensível a
+  maiúsculas/minúsculas.
+
+**Cobertura medida** (fração de pontos de ADS-B que casaram com uma matrícula):
+
+| Base usada | Cobertura |
+|---|---|
+| Amostra (`data-samples/`) | 69,6% |
+| Snapshot completo mais recente (2025-08) | **92,6%** |
+
+Pega sempre o snapshot **mais recente disponível** — aeronaves mudam de matrícula/operador ao
+longo do tempo, e o dado de ADS-B é de março de 2026.
+
+## Como usar (`scripts/padronizar_adsb.R`)
+
+```r
+source("scripts/padronizar_adsb.R")
+
+adsb <- padronizar_adsb(
+  caminho_adsb = "./data-src/adsb_2026_03_15.csv",
+  caminho_aircraft_db = "./data-src/aircraft-database-complete-2025-08.csv"
+)
+```
+
+Gera, ao lado do arquivo de ADS-B original: `adsb_2026_03_15_com_matricula.csv` (sempre) e
+`.parquet` (se o pacote `arrow` estiver instalado) — com todas as colunas originais mais
+`timestamp_utc`, `icao24`, `registration`, `manufacturerName`, `model`, `operator`.
+
+## Próximos passos
+
+1. Investigar o padrão dos ~7,4% de pontos que ainda ficam sem matrícula (hipótese: aeronaves
+   militares/estatais, ou aeronaves matriculadas depois de ago/2025).
+2. Decidir como o ADS-B (ponto-a-ponto) entra no cruzamento com SIROS/VRA/FPL (voo-a-voo) —
+   provavelmente agrupando por `icao24`/`tid` + janela de tempo pra reconstruir a trajetória de
+   cada voo.
